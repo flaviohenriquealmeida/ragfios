@@ -1,0 +1,19 @@
+{
+	"compilerOptions": {
+		"target": "ES2022",
+		"module": "NodeNext",
+		"rootDir": "./src",
+		"outDir": "dist",
+		"strict": true,
+		"esModuleInterop": true,
+		"forceConsistentCasingInFileNames": true,
+		"emitDecoratorMetadata": true,
+		"experimentalDecorators": true,
+		"resolveJsonModule": true,
+		"sourceMap": true,
+		"skipLibCheck": true
+	},
+	"include": ["src/**/*", "**/*.spec.ts", "types"],
+	"exclude": ["dist/**/*"]
+}
+

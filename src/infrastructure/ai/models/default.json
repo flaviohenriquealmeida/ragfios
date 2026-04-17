@@ -1,0 +1,54 @@
+{
+    "$schema": "./schema/lm-config.schema.json",
+    "lm": {
+        "chat": {
+            "url": "http://localhost:1234/v1/chat/completions",
+            "model": "gemma-4-e4b-it",
+            "temperature": 0.2,
+            "maxContextSize": 32768,
+            "system": {
+                "role": "system",
+                "file": "system-default"
+            }
+        },
+        "classification": {
+            "url": "http://localhost:1234/v1/chat/completions",
+            "model": "gemma-4-e4b-it",
+            "system": {
+                "role": "system",
+                "file": "classification-default"
+            }
+        },
+        "queryRewrite": {
+            "url": "http://localhost:1234/v1/chat/completions",
+            "model": "gemma-4-e4b-it",
+            "system": {
+                "role": "system",
+                "file": "query-rewrite-default"
+            }
+        },
+        "prompts": {
+            "conversationContext": {
+                "role": "user",
+                "file": "conversation-context-default"
+            },
+            "summarization": {
+                "role": "system",
+                "file": "sumarization-default"
+            },
+            "intentSafety": {
+                "role": "system",
+                "file": "input-safety-default"
+            },
+            "rerank": {
+                "system": {
+                    "role": "system",
+                    "file": "reranking-system-default"
+                },
+                "user": {
+                    "file": "reranking-user-default"
+                }
+            }
+        }
+    }
+}

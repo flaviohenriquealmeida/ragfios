@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>LLM Streaming Markdown Chat (RAG)</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&display=swap');
+
+    :root {
+      --font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+    body, input, button, textarea {
+      font-family: var(--font-ui);
+      font-weight: 400;   /* or 500 for medium */
+      font-feature-settings: "cv11", "ss01";  /* optional: nicer numerals & alternates */
+    }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      padding: 20px;
+      color: #111;
+    }
+
+    h2 {
+      font-weight: 500;
+      color: #111;
+    }
+
+    #chat {
+
+      padding: 16px;
+      height: 400px;
+      overflow-y: auto;
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .message {
+      padding: 12px 16px;
+      border-radius: 16px;
+      max-width: 70%;
+      word-wrap: break-word;
+      white-space: pre-wrap;
+      font-size: 15px;
+      line-height: 1.5;
+    }
+
+    .user {
+      background: #fafafa;
+      align-self: flex-end;
+      margin-left: auto;
+      border-bottom-right-radius: 4px;
+    }
+
+    .bot {
+      margin-right: auto;
+      border-bottom-left-radius: 4px;
+    }
+
+    #input-container {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    #prompt {
+      flex: 1;
+      padding: 10px 12px;
+      border: 1px solid #e0e0e0;
+      background: #fafafa;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      border-radius: 8px;
+      font-size: 15px;
+      resize: none;        /* prevent manual resizing */
+      overflow: hidden;    /* hide scrollbar */
+      max-height: 200px; 
+    }
+
+    .message pre {
+      background: #202124;
+      color: #e8eaed;
+      padding: 10px;
+      border-radius: 8px;
+      .message pre {
+        max-width: 100%;
+        overflow-x: auto;
+      }
+      font-family: "Fira Code", monospace;
+      font-size: 14px;
+    }
+
+    .message a {
+      color: #1a73e8;
+      text-decoration: underline;
+    }
+
+    /* ✨ Thinking Indicator */
+    .thinking {
+      display: inline-flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .thinking span {
+      width: 6px;
+      height: 6px;
+      background: #888;
+      border-radius: 50%;
+      display: inline-block;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+
+    .thinking span:nth-child(2) {
+      animation-delay: 0.2s;
+    }
+
+    .thinking span:nth-child(3) {
+      animation-delay: 0.4s;
+    }
+
+    @keyframes bounce {
+      0%, 80%, 100% {
+        transform: scale(0.6);
+        opacity: 0.3;
+      }
+      40% {
+        transform: scale(1);
+        opacity: 1;
+      }
+    }
+
+    #upload-btn {
+      padding: 10px 12px;
+      border: 1px solid #e0e0e0;
+      background: #fafafa;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    #upload-btn:hover {
+      background: #f0f0f0;
+    }
+
+    #stop-btn.invisible {
+      visibility: hidden;
+    }
+    #stop-btn {
+      padding: 10px 12px;
+      border: 1px solid #e0e0e0;
+      background: #fff5f5;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+
+    #stop-btn:hover {
+      background: #ffe5e5;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>SLM RAG Implementation for debugging</h2>
+
+  <div id="chat"></div>
+
+  <div id="input-container">
+    <button id="upload-btn">📎</button>
+    <textarea id="prompt" placeholder="Ask anything"></textarea>
+    <button id="stop-btn" class="invisible">⛔</button>
+    <input type="file" id="file-input" style="display: none;" multiple />
+  </div>
+
+  <script type="module">
+    // =========================
+    // Utilities
+    // =========================
+    export class DOMUtils {
+      static create(tag, className) {
+        const el = document.createElement(tag);
+        if (className) el.className = className;
+        return el;
+      }
+    }
+
+    // =========================
+    // Chat UI Components
+    // =========================
+    export class ChatView {
+      constructor(container) {
+        this.container = container;
+      }
+
+      scrollToBottom() {
+        this.container.scrollTo({
+          top: this.container.scrollHeight,
+          behavior: 'smooth'
+        });
+      }
+
+      addMessage(type) {
+        const msg = DOMUtils.create('div', `message ${type}`);
+        this.container.appendChild(msg);
+        this.scrollToBottom();
+        return msg;
+      }
+
+      createThinkingIndicator() {
+        const wrapper = DOMUtils.create('div', 'thinking');
+        wrapper.innerHTML = `
+          <span></span>
+          <span></span>
+          <span></span>
+        `;
+        return wrapper;
+      }
+    }
+
+    // =========================
+    // Input Controller
+    // =========================
+    export class InputController {
+      constructor(textarea, onSubmit) {
+        this.textarea = textarea;
+        this.onSubmit = onSubmit;
+        this.init();
+      }
+
+      init() {
+        this.textarea.addEventListener('input', () => this.autoResize());
+
+        this.textarea.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            this.onSubmit();
+          }
+        });
+      }
+
+      autoResize() {
+        this.textarea.style.height = 'auto';
+        this.textarea.style.height = this.textarea.scrollHeight + 'px';
+
+        if (this.textarea.scrollHeight > 200) {
+          this.textarea.style.height = '200px';
+          this.textarea.style.overflow = 'auto';
+        } else {
+          this.textarea.style.overflow = 'hidden';
+        }
+      }
+
+      getValue() {
+        return this.textarea.value.trim();
+      }
+
+      clear() {
+        this.textarea.value = '';
+      }
+    }
+
+    // =========================
+    // File Upload Handler
+    // =========================
+    export class FileUploader {
+      constructor(button, input, chatView, state) {
+        this.button = button;
+        this.input = input;
+        this.chatView = chatView;
+        this.state = state;
+        this.init();
+      }
+
+      init() {
+        this.button.addEventListener('click', () => this.input.click());
+        this.input.addEventListener('change', () => this.handleUpload());
+      }
+
+      async handleUpload() {
+        if (this.state.busy) return;
+
+        const files = this.input.files;
+        if (!files.length) return;
+
+        this.chatView.addMessage('user').textContent =
+          `📎 file: ${[...files].map(f => f.name).join(', ')}`;
+
+        const botMsg = this.chatView.addMessage('bot');
+        const thinking = this.chatView.createThinkingIndicator();
+        botMsg.appendChild(thinking);
+
+        const formData = new FormData();
+        [...files].forEach(f => formData.append('files', f));
+
+        this.state.busy = true;
+
+        try {
+          const res = await fetch('http://localhost:3000/api/documents/ingest', {
+            method: 'POST',
+            body: formData
+          });
+
+          thinking.remove();
+
+          if (!res.ok) {
+            botMsg.textContent = '❌ Upload failed';
+            return;
+          }
+
+          const data = await res.json().catch(() => null);
+          botMsg.textContent = data?.message || '✅ Files uploaded successfully';
+
+        } catch (err) {
+          console.error(err);
+          thinking.remove();
+          botMsg.textContent = '❌ Error uploading files';
+        } finally {
+          this.state.busy = false;
+          this.input.value = '';
+        }
+      }
+    }
+
+    // =========================
+    // Chat Service (Streaming)
+    // =========================
+    export class ChatService {
+      constructor(chatView, stopBtn, state, smd) {
+        this.chatView = chatView;
+        this.stopBtn = stopBtn;
+        this.state = state;
+        this.smd = smd;
+        this.controller = null;
+
+        this.stopBtn.addEventListener('click', () => this.abort());
+      }
+
+      abort() {
+        if (this.controller) {
+          this.controller.abort();
+          this.controller = null;
+          this.state.busy = false;
+        }
+      }
+
+      async send(prompt, conversationId) {
+        if (!prompt || this.state.busy) return;
+        input.clear();
+        this.chatView.addMessage('user').textContent = prompt;
+
+        const botMsg = this.chatView.addMessage('bot');
+        const thinking = this.chatView.createThinkingIndicator();
+        botMsg.appendChild(thinking);
+
+        const renderer = this.smd.default_renderer(botMsg);
+        const parser = this.smd.parser(renderer);
+
+        this.state.busy = true;
+        this.stopBtn.classList.remove('invisible');
+        this.controller = new AbortController();
+
+        try {
+          const res = await fetch('http://localhost:3000/api/prompt', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt, conversationId }),
+            signal: this.controller.signal
+          });
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+
+          let buffer = '';
+          let started = false;
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+
+            if (!started) {
+              thinking.remove();
+              started = true;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+
+            let boundary;
+            while ((boundary = buffer.indexOf('\n')) !== -1) {
+              const line = buffer.slice(0, boundary).trim();
+              buffer = buffer.slice(boundary + 1);
+
+              if (!line) continue;
+
+              try {
+                const obj = JSON.parse(line);
+
+                if (obj.type === 'text') {
+                  this.smd.parser_write(parser, obj.delta);
+                } else if (obj.type === 'done') {
+                  this.smd.parser_write(parser, obj.stats);
+                }
+
+                this.chatView.scrollToBottom();
+
+              } catch (err) {
+                console.error('Parse error:', err);
+              }
+            }
+          }
+
+          this.smd.parser_end(parser);
+
+        } catch (err) {
+          if (err.name === 'AbortError') {
+            botMsg.textContent += '\n\n[Canceled]';
+          } else {
+            thinking.remove();
+            botMsg.textContent += '\n[Error receiving response]';
+          }
+        } finally {
+          this.state.busy = false;
+          this.stopBtn.classList.add('invisible');
+          this.controller = null;
+        }
+      }
+    }
+
+    // =========================
+    // App Bootstrap
+    // =========================
+    import * as smd from "https://cdn.jsdelivr.net/npm/streaming-markdown/smd.min.js";
+
+    const state = { busy: false };
+
+    const chatView = new ChatView(document.getElementById('chat'));
+    const input = new InputController(
+      document.getElementById('prompt'),
+      () => chatService.send(input.getValue(), conversationId)
+    );
+
+    const uploader = new FileUploader(
+      document.getElementById('upload-btn'),
+      document.getElementById('file-input'),
+      chatView,
+      state
+    );
+
+    const chatService = new ChatService(
+      chatView,
+      document.getElementById('stop-btn'),
+      state,
+      smd
+    );
+
+    const conversationId = crypto.randomUUID();
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('id', conversationId);
+    window.history.replaceState({}, '', url);
+
+    console.log(url.toString());
+
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,259 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "type": "object",
+    "required": [
+        "lm"
+    ],
+    "properties": {
+        "$schema": {
+            "type": "string"
+        },
+        "lm": {
+            "type": "object",
+            "required": [
+                "chat",
+                "classification",
+                "queryRewrite",
+                "prompts"
+            ],
+            "properties": {
+                "chat": {
+                    "type": "object",
+                    "required": [
+                        "url",
+                        "model",
+                        "system"
+                    ],
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "format": "uri"
+                        },
+                        "model": {
+                            "type": "string"
+                        },
+                        "temperature": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 1
+                        },
+                        "maxContextSize": {
+                            "type": "number"
+                        },
+                        "system": {
+                            "type": "object",
+                            "required": [
+                                "role",
+                                "file"
+                            ],
+                            "properties": {
+                                "role": {
+                                    "type": "string",
+                                    "enum": [
+                                        "system"
+                                    ]
+                                },
+                                "file": {
+                                    "type": "string"
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "classification": {
+                    "type": "object",
+                    "required": [
+                        "url",
+                        "model",
+                        "system"
+                    ],
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "format": "uri"
+                        },
+                        "model": {
+                            "type": "string"
+                        },
+                        "system": {
+                            "type": "object",
+                            "required": [
+                                "role",
+                                "file"
+                            ],
+                            "properties": {
+                                "role": {
+                                    "type": "string",
+                                    "enum": [
+                                        "system"
+                                    ]
+                                },
+                                "file": {
+                                    "type": "string"
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "queryRewrite": {
+                    "type": "object",
+                    "required": [
+                        "url",
+                        "model",
+                        "system"
+                    ],
+                    "properties": {
+                        "url": {
+                            "type": "string",
+                            "format": "uri"
+                        },
+                        "model": {
+                            "type": "string"
+                        },
+                        "system": {
+                            "type": "object",
+                            "required": [
+                                "role",
+                                "file"
+                            ],
+                            "properties": {
+                                "role": {
+                                    "type": "string",
+                                    "enum": [
+                                        "system"
+                                    ]
+                                },
+                                "file": {
+                                    "type": "string"
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "intentSafety": {
+                    "type": "object",
+                    "required": [
+                        "role",
+                        "file"
+                    ],
+                    "properties": {
+                        "role": {
+                            "type": "string"
+                        },
+                        "file": {
+                            "type": "string"
+                        }
+                    },
+                    "additionalProperties": false
+                },
+                "prompts": {
+                    "type": "object",
+                    "required": [
+                        "conversationContext",
+                        "summarization",
+                        "intentSafety",
+                        "rerank"
+                    ],
+                    "properties": {
+                        "conversationContext": {
+                            "type": "object",
+                            "required": [
+                                "role",
+                                "file"
+                            ],
+                            "properties": {
+                                "role": {
+                                    "type": "string"
+                                },
+                                "file": {
+                                    "type": "string"
+                                }
+                            },
+                            "additionalProperties": false
+                        },
+                        "summarization": {
+                            "type": "object",
+                            "required": [
+                                "role",
+                                "file"
+                            ],
+                            "properties": {
+                                "role": {
+                                    "type": "string"
+                                },
+                                "file": {
+                                    "type": "string"
+                                }
+                            },
+                            "additionalProperties": false
+                        },
+                        "intentSafety": {
+                            "type": "object",
+                            "required": [
+                                "role",
+                                "file"
+                            ],
+                            "properties": {
+                                "role": {
+                                    "type": "string"
+                                },
+                                "file": {
+                                    "type": "string"
+                                }
+                            },
+                            "additionalProperties": false
+                        },
+                        "rerank": {
+                            "type": "object",
+                            "required": [
+                                "system",
+                                "user"
+                            ],
+                            "properties": {
+                                "system": {
+                                    "type": "object",
+                                    "required": [
+                                        "role",
+                                        "file"
+                                    ],
+                                    "properties": {
+                                        "role": {
+                                            "type": "string",
+                                            "const": "system"
+                                        },
+                                        "file": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "additionalProperties": false
+                                },
+                                "user": {
+                                    "type": "object",
+                                    "required": [
+                                        "file"
+                                    ],
+                                    "properties": {
+                                        "file": {
+                                            "type": "string"
+                                        }
+                                    },
+                                    "additionalProperties": false
+                                }
+                            },
+                            "additionalProperties": false
+                        }
+                    },
+                    "additionalProperties": false
+                }
+            },
+            "additionalProperties": false
+        }
+    },
+    "additionalProperties": false
+}

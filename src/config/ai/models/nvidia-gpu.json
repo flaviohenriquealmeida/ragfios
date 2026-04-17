@@ -1,0 +1,19 @@
+{
+    "$schema": "../../../../src/shared/infrastructure/ai/model-manager/model-manager.schema.json",
+    "embedder": {
+        "task": "feature-extraction",
+        "modelId": "onnx-community/all-MiniLM-L6-v2",
+        "options": {
+            "device": "cuda",
+            "dtype": "fp16"
+        }
+    },
+    "router": {
+        "task": "text-generation",
+        "modelId": "onnx-community/gemma-4-e2b-it-onnx",
+        "options": {
+            "device": "cuda",
+            "dtype": "fp16"
+        }
+    }
+}
