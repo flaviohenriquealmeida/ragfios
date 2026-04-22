@@ -5,7 +5,6 @@ import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import bodyParser from 'body-parser';
 import { initializeMulter } from '../multer/multer';
-import chatRoutes from '../../../modules/chat/interfaces/http/chat/chat.routes';
 import ingestionRoutes from '../../../modules/ingestion/interfaces/http/ingestion/ingestion.routes';
 
 const app = express();
@@ -15,7 +14,6 @@ app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 
-chatRoutes(app);
 ingestionRoutes(app);
 
 app.use((req: Request, res: Response) => {

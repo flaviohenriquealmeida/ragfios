@@ -167,6 +167,13 @@ export class HandleChatUserCase {
 				stream.on('end', async () => {
 					cleanup();
 					try {
+						// ADD THIS GUARD:
+						// If the WebSocket disconnected, the signal will be aborted.
+						// We shouldn't proceed with saving or sending the final message.
+						if (params.signal.aborted) {
+							resolve();
+							return;
+						}
 						const message = Conversation.createMessageFrom(Role.ASSISTANT, fullText);
 						conversation.addMessage(message);
 

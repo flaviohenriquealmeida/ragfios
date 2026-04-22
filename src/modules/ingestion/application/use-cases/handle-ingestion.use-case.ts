@@ -1,11 +1,9 @@
 // Copyright (c) 2026 Flavio Almeida
 // Licensed under the MIT License
 
-import { Content } from '../../../../shared/domain/enums/content';
 import { ContentRepository } from '../../../chat/domain/repositories/content.repository';
 import { cleanText, splitTextIntoChunks } from '../../interfaces/http/ingestion/utils/chunker';
 import { extractText } from '../../interfaces/http/ingestion/utils/extractor';
-import { generateAnchorChunk } from '../../interfaces/http/ingestion/utils/generate-anchor-chunker';
 import { MyLogger } from '../../../../shared/ports/my-logger/my-logger';
 import { embed } from '../../../chat/infrastructure/ai/embedder/embedder';
 
@@ -22,17 +20,7 @@ export class HanndleIngestionUseCase {
 
 				const tempText = await extractText(filePath);
 
-				const anchorChunk = await generateAnchorChunk(tempText);
-				const embeddedAnchorChunk = await embed(anchorChunk);
-
-				this.logger.info(`[uploads] adding anchor chunk for  ${file.originalname}`);
-				// add ID here
-				await this.contentRepository.addChunk(embeddedAnchorChunk, {
-					text: anchorChunk,
-					fileName: file.originalname,
-					chunkIndex: -1,
-					type: Content.ANCHOR
-				});
+				// anchor chunk disabled until ingestiona accept types. See generateAnchorChunk
 
 				const text = cleanText(tempText);
 				const chunks = splitTextIntoChunks(text, 120, 40);
@@ -51,8 +39,11 @@ export class HanndleIngestionUseCase {
 				this.logger.info(`[uploads] Chunking finished  ${file.originalname}`);
 			}
 		} catch (err) {
-			this.logger.error('Error processing document', { err });
-			throw 'Error processing document';
+			const message = 'Error processing document';
+			this.logger.error(message, { err });
+			throw new Error(message, {
+				cause: err
+			});
 		}
 	}
 }

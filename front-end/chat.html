@@ -328,7 +328,7 @@
     }
 
     // =========================
-    // Chat Service (Streaming)
+    // Chat Service (WebSocket Refactor)
     // =========================
     export class ChatService {
       constructor(chatView, stopBtn, state, smd) {
@@ -336,98 +336,134 @@
         this.stopBtn = stopBtn;
         this.state = state;
         this.smd = smd;
-        this.controller = null;
+        
+        // UI elements for current turn
+        this.activeBotMsg = null;
+        this.activeParser = null;
+        this.activeThinking = null;
 
-        this.stopBtn.addEventListener('click', () => this.abort());
+        this.initWebSocket();
+        this.stopBtn.addEventListener('click', () => this.stopGeneration());
       }
 
-      abort() {
-        if (this.controller) {
-          this.controller.abort();
-          this.controller = null;
-          this.state.busy = false;
+      initWebSocket() {
+        // Connect to the backend
+        this.socket = new WebSocket('ws://localhost:3000');
+
+        this.socket.onopen = () => console.log('✅ WebSocket Connected');
+
+        this.socket.onmessage = (event) => {
+          this.handleIncomingMessage(event.data);
+        };
+
+        this.socket.onerror = (error) => {
+          console.error('WebSocket Error:', error);
+          if (this.activeBotMsg) this.activeBotMsg.textContent += '\n[Connection Error]';
+        };
+
+        this.socket.onclose = () => {
+          console.warn('WebSocket Closed. Reconnecting...');
+          setTimeout(() => this.initWebSocket(), 3000); // Simple auto-reconnect
+        };
+      }
+
+      handleIncomingMessage(rawData) {
+        try {
+          // Your backend sends strings (via formatChunk)
+          // Check if it's the raw data: prefix or a JSON object
+          let line = rawData.trim();
+          if (line.startsWith('data: ')) line = line.replace('data: ', '');
+          if (line === '[DONE]') return;
+          const obj = JSON.parse(line);
+
+          // 1. Handle UI transitions (remove thinking dots on first chunk)
+          if (this.activeThinking) {
+            this.activeThinking.remove();
+            this.activeThinking = null;
+          }
+
+          switch (obj.type) {
+            case 'text':
+              if (this.activeParser) {
+                this.smd.parser_write(this.activeParser, obj.delta);
+              }
+              break;
+
+              case 'done':
+                  if (this.activeParser) {
+                    // RESTORED: This sends the stats string to the markdown renderer
+                    this.smd.parser_write(this.activeParser, obj.stats);
+                  }
+                  this.finishTurn();
+                  break;
+
+              case 'error':
+                  console.error('Server side error:', obj.delta);
+                  // Ensure the parser handles the error message before closing
+                  if (this.activeParser) {
+                    this.smd.parser_write(this.activeParser, `\n\n❌ [Error: ${obj.delta}]`);
+                  }
+                  this.finishTurn();
+                  break;
+
+              default:
+                console.warn('Unknown message type received:', obj.type);
+                break;
+          }
+          
+          this.chatView.scrollToBottom();
+
+        } catch (err) {
+          console.error('Error processing WS message:', err, rawData);
         }
+      }
+
+      stopGeneration() {
+        // Send a message to the backend to trigger the AbortSignal
+        if (this.socket.readyState === WebSocket.OPEN) {
+          this.socket.send(JSON.stringify({ action: 'api:stop' }));
+        }
+        this.finishTurn('[Canceled]');
+      }
+
+      finishTurn(suffix = '') {
+        if (this.activeParser) {
+          this.smd.parser_end(this.activeParser);
+          if (suffix) this.activeBotMsg.textContent += `\n\n${suffix}`;
+        }
+        this.activeParser = null;
+        this.activeBotMsg = null;
+        this.state.busy = false;
+        this.stopBtn.classList.add('invisible');
       }
 
       async send(prompt, conversationId) {
         if (!prompt || this.state.busy) return;
+        if (this.socket.readyState !== WebSocket.OPEN) {
+          alert("Connection is not ready. Please wait.");
+          return;
+        }
+
+        // Prepare UI
         input.clear();
         this.chatView.addMessage('user').textContent = prompt;
 
-        const botMsg = this.chatView.addMessage('bot');
-        const thinking = this.chatView.createThinkingIndicator();
-        botMsg.appendChild(thinking);
+        this.activeBotMsg = this.chatView.addMessage('bot');
+        this.activeThinking = this.chatView.createThinkingIndicator();
+        this.activeBotMsg.appendChild(this.activeThinking);
 
-        const renderer = this.smd.default_renderer(botMsg);
-        const parser = this.smd.parser(renderer);
+        // Prepare Markdown Parser
+        const renderer = this.smd.default_renderer(this.activeBotMsg);
+        this.activeParser = this.smd.parser(renderer);
 
         this.state.busy = true;
         this.stopBtn.classList.remove('invisible');
-        this.controller = new AbortController();
 
-        try {
-          const res = await fetch('http://localhost:3000/api/prompt', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ prompt, conversationId }),
-            signal: this.controller.signal
-          });
-
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-
-          let buffer = '';
-          let started = false;
-
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-
-            if (!started) {
-              thinking.remove();
-              started = true;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-
-            let boundary;
-            while ((boundary = buffer.indexOf('\n')) !== -1) {
-              const line = buffer.slice(0, boundary).trim();
-              buffer = buffer.slice(boundary + 1);
-
-              if (!line) continue;
-
-              try {
-                const obj = JSON.parse(line);
-
-                if (obj.type === 'text') {
-                  this.smd.parser_write(parser, obj.delta);
-                } else if (obj.type === 'done') {
-                  this.smd.parser_write(parser, obj.stats);
-                }
-
-                this.chatView.scrollToBottom();
-
-              } catch (err) {
-                console.error('Parse error:', err);
-              }
-            }
-          }
-
-          this.smd.parser_end(parser);
-
-        } catch (err) {
-          if (err.name === 'AbortError') {
-            botMsg.textContent += '\n\n[Canceled]';
-          } else {
-            thinking.remove();
-            botMsg.textContent += '\n[Error receiving response]';
-          }
-        } finally {
-          this.state.busy = false;
-          this.stopBtn.classList.add('invisible');
-          this.controller = null;
-        }
+        // Send the prompt over WebSocket
+        this.socket.send(JSON.stringify({
+          action: 'api:prompt',
+          payload: { prompt, conversationId }
+        }));
       }
     }
 
