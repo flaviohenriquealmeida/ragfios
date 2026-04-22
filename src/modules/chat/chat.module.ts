@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Flavio Almeida
 // Licensed under the MIT License
 
+import { KokoroService } from '../../infrastructure/tts/kokorotts.service';
 import { createGuardManager } from '../../shared/application/guard-manager/create-guard-manager';
 import {
 	contentRepository,
@@ -8,6 +9,7 @@ import {
 	myLogger,
 	ragConfig
 } from '../../shared/infrastructure/infrastructure.module';
+import { TTSService } from '../../shared/ports/tts/tts.service';
 
 import { HandleChatUserCase } from './application/use-cases/handle-chat.use-case';
 import { ConversationRepository } from './domain/repositories/conversation.repository';
@@ -57,6 +59,8 @@ const retrievalOrchestratorService: RetrievalOrchestratorService =
 	);
 
 const promptComposerService = new MarkDownPromptComposer(ragConfig);
+const ttsService: TTSService = new KokoroService();
+
 const handleChatUserCase = new HandleChatUserCase(
 	conversationService,
 	conversationRepository,
@@ -65,7 +69,8 @@ const handleChatUserCase = new HandleChatUserCase(
 	myLogger,
 	summarizationService,
 	retrievalOrchestratorService,
-	promptComposerService
+	promptComposerService,
+	ttsService
 );
 
 export {
