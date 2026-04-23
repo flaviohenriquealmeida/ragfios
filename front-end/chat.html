@@ -326,7 +326,47 @@
         }
       }
     }
+    // =========================
+    // Audio Player (PCM 16bit 24kHz)
+    // =========================
+    export class PCMPlayer {
+        constructor() {
+            this.audioCtx = null;
+            this.nextStartTime = 0;
+        }
 
+        // Initialize AudioContext on first user gesture
+        initContext() {
+            if (!this.audioCtx) {
+                this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
+            } else if (this.audioCtx.state === 'suspended') {
+                this.audioCtx.resume();
+            }
+        }
+
+        playChunk(arrayBuffer) {
+            this.initContext();
+            
+            const int16Array = new Int16Array(arrayBuffer);
+            const float32Array = new Float32Array(int16Array.length);
+            for (let i = 0; i < int16Array.length; i++) {
+                float32Array[i] = int16Array[i] / 32768.0;
+            }
+
+            const audioBuffer = this.audioCtx.createBuffer(1, float32Array.length, 24000);
+            audioBuffer.getChannelData(0).set(float32Array);
+
+            const source = this.audioCtx.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(this.audioCtx.destination);
+
+            const currentTime = this.audioCtx.currentTime;
+            if (this.nextStartTime < currentTime) this.nextStartTime = currentTime;
+
+            source.start(this.nextStartTime);
+            this.nextStartTime += audioBuffer.duration;
+        }
+    }
     // =========================
     // Chat Service (WebSocket Refactor)
     // =========================
@@ -342,7 +382,17 @@
         this.activeParser = null;
         this.activeThinking = null;
 
+        // 1. CAPTURE THE ID FIRST
+        this.conversationId = conversationId;
+
+        // 1. ENSURE PLAYER IS INITIALIZED IMMEDIATELY
+        this.player = new PCMPlayer();
+
+        // Bind the send method to ensure 'this' always refers to ChatService
+        this.send = this.send.bind(this);
+        
         this.initWebSocket();
+        this.initTTSWebSocket(); // 1. Start TTS listener
         this.stopBtn.addEventListener('click', () => this.stopGeneration());
       }
 
@@ -366,6 +416,22 @@
           setTimeout(() => this.initWebSocket(), 3000); // Simple auto-reconnect
         };
       }
+
+      initTTSWebSocket() {
+        // 2. Connect to our TTS Server on port 3001
+        this.ttsSocket = new WebSocket(`ws://localhost:3001?conversationId=${this.conversationId}`);
+        this.ttsSocket.binaryType = 'arraybuffer';
+
+        this.ttsSocket.onmessage = (event) => {
+            // 3. Play the audio chunk immediately
+            this.player.playChunk(event.data);
+        };
+
+        this.ttsSocket.onclose = () => {
+            console.warn('TTS WebSocket Closed. Retrying...');
+            setTimeout(() => this.initTTSWebSocket(), 3000);
+        };
+    }
 
       handleIncomingMessage(rawData) {
         try {
@@ -439,6 +505,10 @@
 
       async send(prompt, conversationId) {
         if (!prompt || this.state.busy) return;
+
+        // 4. Critical: Resume AudioContext on User Click
+        this.player.initContext();
+
         if (this.socket.readyState !== WebSocket.OPEN) {
           alert("Connection is not ready. Please wait.");
           return;
@@ -473,6 +543,7 @@
     import * as smd from "https://cdn.jsdelivr.net/npm/streaming-markdown/smd.min.js";
 
     const state = { busy: false };
+    const conversationId = crypto.randomUUID();
 
     const chatView = new ChatView(document.getElementById('chat'));
     const input = new InputController(
@@ -491,10 +562,10 @@
       chatView,
       document.getElementById('stop-btn'),
       state,
-      smd
+      smd,
+      conversationId
     );
 
-    const conversationId = crypto.randomUUID();
 
     const url = new URL(window.location.href);
     url.searchParams.set('id', conversationId);
