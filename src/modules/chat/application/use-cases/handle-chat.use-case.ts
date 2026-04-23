@@ -15,6 +15,7 @@ import { ProseStreamRefiner } from '../../interfaces/http/chat/helpers/prose-str
 import { RetrievalOrchestratorService } from '../../domain/services/retrieval-orchestrator.service';
 import { SummarizationService } from '../../domain/services/summarization.service';
 import { ConversationService } from '../../domain/services/conversation.service';
+import { TTSService } from '../../../../shared/ports/tts/tts.service';
 
 export class HandleChatUserCase {
 	constructor(
@@ -25,7 +26,8 @@ export class HandleChatUserCase {
 		private readonly logger: MyLogger,
 		private readonly summarizationService: SummarizationService,
 		private readonly retrievalOrchestratorService: RetrievalOrchestratorService,
-		private readonly promptComposerService: PromptComposerService
+		private readonly promptComposerService: PromptComposerService,
+		private readonly ttsService: TTSService
 	) {}
 
 	public async execute(params: {
@@ -116,6 +118,8 @@ export class HandleChatUserCase {
 				// 1. Instantiate the refiner at the start of the execute method (ensure fresh state)
 				const streamRefiner = new ProseStreamRefiner(this.logger);
 
+				let ttsBuffer = ''; // Local buffer for sentence detection
+
 				// 2. The streamlined data listener
 				stream.on('data', (chunk) => {
 					buffer += chunk.toString();
@@ -145,6 +149,31 @@ export class HandleChatUserCase {
 
 									if (refinedDelta !== null) {
 										fullText += refinedDelta;
+										ttsBuffer += refinedDelta;
+
+										const sentenceBoundary = /[.!?](\s+|$)/;
+										const match = ttsBuffer.match(sentenceBoundary);
+										if (match) {
+											const endIdx = match.index! + 1;
+											const sentence = ttsBuffer.slice(0, endIdx).trim();
+
+											// Advance the buffer
+											ttsBuffer = ttsBuffer.slice(endIdx);
+
+											if (sentence.length > 0) {
+												// 3. Dispatch to Kokoro (No await - let it run in background)
+												this.ttsService
+													.dispatch({
+														text: sentence,
+														conversationId: params.conversationId
+													})
+													.catch((err) =>
+														this.logger.error('[TTS] Dispatch error', {
+															err
+														})
+													);
+											}
+										}
 										params.writeStreamResponse(
 											formatChunk({ type: 'text', delta: refinedDelta })
 										);
@@ -165,6 +194,16 @@ export class HandleChatUserCase {
 				});
 
 				stream.on('end', async () => {
+					if (ttsBuffer.trim().length > 0 && !params.signal.aborted) {
+						this.ttsService
+							.dispatch({
+								text: ttsBuffer.trim(),
+								conversationId: params.conversationId
+							})
+							.catch((err) =>
+								this.logger.error('[TTS-Trigger] Final dispatch failed', { err })
+							);
+					}
 					cleanup();
 					try {
 						// ADD THIS GUARD:

@@ -59,7 +59,7 @@ const retrievalOrchestratorService: RetrievalOrchestratorService =
 	);
 
 const promptComposerService = new MarkDownPromptComposer(ragConfig);
-const ttsService: TTSService = new KokoroService();
+const ttsService: TTSService = new KokoroService(myLogger);
 
 const handleChatUserCase = new HandleChatUserCase(
 	conversationService,

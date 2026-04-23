@@ -5,7 +5,7 @@ import { TTSService, TTSRequest } from '../../shared/ports/tts/tts.service';
 
 export class KokoroService implements TTSService {
 	// LOCKED URL: No double slashes, exactly as you defined
-	private readonly url = 'http://localhost:3001/api/v1/tts/stream';
+	private readonly url = 'http://localhost:3001/api/v1/generate';
 
 	constructor(private readonly logger: MyLogger) {}
 
