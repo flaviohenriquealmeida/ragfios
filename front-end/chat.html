@@ -1,579 +1,347 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8">
   <title>LLM Streaming Markdown Chat (RAG)</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&display=swap');
-
     :root {
-      --font-ui: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --bg-main: #ffffff;
+      --bg-msg-user: #fafafa;
+      --bg-msg-bot: #ffffff;
+      --border-color: #e0e0e0;
+      --accent-blue: #1a73e8;
+      --error-red: #fff5f5;
+      --font-family: "Inter", system-ui, -apple-system, sans-serif;
     }
 
-    *,
-    *::before,
-    *::after {
-      box-sizing: border-box;
-    }
-    body, input, button, textarea {
-      font-family: var(--font-ui);
-      font-weight: 400;   /* or 500 for medium */
-      font-feature-settings: "cv11", "ss01";  /* optional: nicer numerals & alternates */
-    }
+    * { box-sizing: border-box; }
 
     body {
-      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      font-family: var(--font-family);
+      margin: 0;
       padding: 20px;
+      line-height: 1.5;
       color: #111;
-    }
-
-    h2 {
-      font-weight: 500;
-      color: #111;
-    }
-
-    #chat {
-
-      padding: 16px;
-      height: 400px;
-      overflow-y: auto;
-      border-radius: 12px;
       display: flex;
       flex-direction: column;
-      gap: 12px;
+      height: 100vh;
+    }
+
+    h2 { font-weight: 500; margin-bottom: 20px; }
+
+    /* --- Chat Area --- */
+    #chat {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      padding-bottom: 20px;
     }
 
     .message {
       padding: 12px 16px;
       border-radius: 16px;
-      max-width: 70%;
-      word-wrap: break-word;
-      white-space: pre-wrap;
+      max-width: 85%;
       font-size: 15px;
-      line-height: 1.5;
+      animation: fadeIn 0.3s ease;
     }
 
     .user {
-      background: #fafafa;
+      background: var(--bg-msg-user);
       align-self: flex-end;
-      margin-left: auto;
       border-bottom-right-radius: 4px;
+      border: 1px solid var(--border-color);
     }
 
     .bot {
-      margin-right: auto;
+      align-self: flex-start;
       border-bottom-left-radius: 4px;
     }
 
+    /* --- Input Area --- */
     #input-container {
       display: flex;
-      gap: 8px;
-      margin-top: 12px;
+      gap: 12px;
+      align-items: flex-end;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
     }
 
     #prompt {
       flex: 1;
-      padding: 10px 12px;
-      border: 1px solid #e0e0e0;
-      background: #fafafa;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
-      border-radius: 8px;
+      padding: 12px;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
       font-size: 15px;
-      resize: none;        /* prevent manual resizing */
-      overflow: hidden;    /* hide scrollbar */
-      max-height: 200px; 
+      resize: none;
+      max-height: 150px;
+      outline: none;
+      transition: border-color 0.2s;
     }
 
-    .message pre {
-      background: #202124;
-      color: #e8eaed;
-      padding: 10px;
-      border-radius: 8px;
-      .message pre {
-        max-width: 100%;
-        overflow-x: auto;
-      }
-      font-family: "Fira Code", monospace;
-      font-size: 14px;
+    #prompt:focus { border-color: var(--accent-blue); }
+
+    .btn-icon {
+      padding: 12px;
+      border: 1px solid var(--border-color);
+      background: white;
+      border-radius: 12px;
+      cursor: pointer;
+      font-size: 18px;
+      transition: all 0.2s;
     }
 
-    .message a {
-      color: #1a73e8;
-      text-decoration: underline;
-    }
+    .btn-icon:hover { background: #f5f5f5; }
+    
+    #stop-btn { background: var(--error-red); color: #d93025; }
+    #stop-btn.hidden { display: none; }
 
-    /* ✨ Thinking Indicator */
-    .thinking {
-      display: inline-flex;
-      gap: 4px;
-      align-items: center;
-    }
-
+    /* --- Thinking Animation --- */
+    .thinking { display: flex; gap: 4px; padding: 8px 0; }
     .thinking span {
-      width: 6px;
-      height: 6px;
-      background: #888;
+      width: 8px; height: 8px;
+      background: #ccc;
       border-radius: 50%;
-      display: inline-block;
-      animation: bounce 1.4s infinite ease-in-out;
+      animation: bounce 1.4s infinite ease-in-out both;
     }
-
-    .thinking span:nth-child(2) {
-      animation-delay: 0.2s;
-    }
-
-    .thinking span:nth-child(3) {
-      animation-delay: 0.4s;
-    }
+    .thinking span:nth-child(1) { animation-delay: -0.32s; }
+    .thinking span:nth-child(2) { animation-delay: -0.16s; }
 
     @keyframes bounce {
-      0%, 80%, 100% {
-        transform: scale(0.6);
-        opacity: 0.3;
-      }
-      40% {
-        transform: scale(1);
-        opacity: 1;
-      }
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1.0); }
     }
-
-    #upload-btn {
-      padding: 10px 12px;
-      border: 1px solid #e0e0e0;
-      background: #fafafa;
-      border-radius: 8px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-
-    #upload-btn:hover {
-      background: #f0f0f0;
-    }
-
-    #stop-btn.invisible {
-      visibility: hidden;
-    }
-    #stop-btn {
-      padding: 10px 12px;
-      border: 1px solid #e0e0e0;
-      background: #fff5f5;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-
-    #stop-btn:hover {
-      background: #ffe5e5;
-    }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
   </style>
 </head>
 <body>
 
-  <h2>SLM RAG Implementation for debugging</h2>
+  <h2>SLM RAG Debugger</h2>
 
   <div id="chat"></div>
 
   <div id="input-container">
-    <button id="upload-btn">📎</button>
-    <textarea id="prompt" placeholder="Ask anything"></textarea>
-    <button id="stop-btn" class="invisible">⛔</button>
+    <button id="upload-btn" class="btn-icon" title="Upload Files">📎</button>
+    <textarea id="prompt" placeholder="Ask anything..." rows="1"></textarea>
+    <button id="stop-btn" class="btn-icon hidden" title="Stop Generation">⛔</button>
     <input type="file" id="file-input" style="display: none;" multiple />
   </div>
 
   <script type="module">
-    // =========================
-    // Utilities
-    // =========================
-    export class DOMUtils {
-      static create(tag, className) {
-        const el = document.createElement(tag);
-        if (className) el.className = className;
-        return el;
+    import * as smd from "https://cdn.jsdelivr.net/npm/streaming-markdown/smd.min.js";
+
+    // 1. Configuration Constants
+    const CONFIG = {
+      CHAT_WS: 'ws://localhost:3000',
+      TTS_WS: 'ws://localhost:3001',
+      INGEST_URL: 'http://localhost:3000/api/documents/ingest',
+      SAMPLE_RATE: 24000
+    };
+
+    // 2. Audio Engine (Dedicated for PCM 16bit)
+    class AudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.gain = null;
+        this.nextTime = 0;
+        this.generation = 0;
+        this.sources = new Set();
+      }
+
+      init() {
+        if (!this.ctx) {
+          this.ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: CONFIG.SAMPLE_RATE });
+          this.gain = this.ctx.createGain();
+          this.gain.connect(this.ctx.destination);
+        }
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+      }
+
+      stop() {
+        this.generation++;
+        this.sources.forEach(s => { try { s.stop(); } catch(e){} });
+        this.sources.clear();
+        this.nextTime = 0;
+      }
+
+      playChunk(buffer, incomingGen) {
+        if (incomingGen !== this.generation) return;
+        this.init();
+
+        const samples = new Int16Array(buffer);
+        const f32 = new Float32Array(samples.length);
+        for (let i = 0; i < samples.length; i++) f32[i] = samples[i] / 32768.0;
+
+        const audioBuf = this.ctx.createBuffer(1, f32.length, CONFIG.SAMPLE_RATE);
+        audioBuf.getChannelData(0).set(f32);
+
+        const source = this.ctx.createBufferSource();
+        source.buffer = audioBuf;
+        source.connect(this.gain);
+        
+        this.sources.add(source);
+        source.onended = () => this.sources.delete(source);
+
+        this.nextTime = Math.max(this.nextTime, this.ctx.currentTime);
+        source.start(this.nextTime);
+        this.nextTime += audioBuf.duration;
       }
     }
 
-    // =========================
-    // Chat UI Components
-    // =========================
-    export class ChatView {
-      constructor(container) {
-        this.container = container;
+    // 3. UI Controller (Handles DOM & Rendering)
+    class UIController {
+      constructor() {
+        this.chat = document.getElementById('chat');
+        this.prompt = document.getElementById('prompt');
+        this.stopBtn = document.getElementById('stop-btn');
+      }
+
+      appendMessage(role, text = '') {
+        const div = document.createElement('div');
+        div.className = `message ${role}`;
+        div.textContent = text;
+        this.chat.appendChild(div);
+        this.scrollToBottom();
+        return div;
+      }
+
+      showThinking(container) {
+        const div = document.createElement('div');
+        div.className = 'thinking';
+        div.innerHTML = '<span></span><span></span><span></span>';
+        container.appendChild(div);
+        return div;
+      }
+
+      toggleStopBtn(show) {
+        this.stopBtn.classList.toggle('hidden', !show);
       }
 
       scrollToBottom() {
-        this.container.scrollTo({
-          top: this.container.scrollHeight,
-          behavior: 'smooth'
-        });
+        this.chat.scrollTo({ top: this.chat.scrollHeight, behavior: 'smooth' });
       }
 
-      addMessage(type) {
-        const msg = DOMUtils.create('div', `message ${type}`);
-        this.container.appendChild(msg);
-        this.scrollToBottom();
-        return msg;
-      }
-
-      createThinkingIndicator() {
-        const wrapper = DOMUtils.create('div', 'thinking');
-        wrapper.innerHTML = `
-          <span></span>
-          <span></span>
-          <span></span>
-        `;
-        return wrapper;
+      autoResizeInput() {
+        this.prompt.style.height = 'auto';
+        this.prompt.style.height = Math.min(this.prompt.scrollHeight, 150) + 'px';
       }
     }
 
-    // =========================
-    // Input Controller
-    // =========================
-    export class InputController {
-      constructor(textarea, onSubmit) {
-        this.textarea = textarea;
-        this.onSubmit = onSubmit;
-        this.init();
-      }
-
-      init() {
-        this.textarea.addEventListener('input', () => this.autoResize());
-
-        this.textarea.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            this.onSubmit();
-          }
-        });
-      }
-
-      autoResize() {
-        this.textarea.style.height = 'auto';
-        this.textarea.style.height = this.textarea.scrollHeight + 'px';
-
-        if (this.textarea.scrollHeight > 200) {
-          this.textarea.style.height = '200px';
-          this.textarea.style.overflow = 'auto';
-        } else {
-          this.textarea.style.overflow = 'hidden';
-        }
-      }
-
-      getValue() {
-        return this.textarea.value.trim();
-      }
-
-      clear() {
-        this.textarea.value = '';
-      }
-    }
-
-    // =========================
-    // File Upload Handler
-    // =========================
-    export class FileUploader {
-      constructor(button, input, chatView, state) {
-        this.button = button;
-        this.input = input;
-        this.chatView = chatView;
-        this.state = state;
-        this.init();
-      }
-
-      init() {
-        this.button.addEventListener('click', () => this.input.click());
-        this.input.addEventListener('change', () => this.handleUpload());
-      }
-
-      async handleUpload() {
-        if (this.state.busy) return;
-
-        const files = this.input.files;
-        if (!files.length) return;
-
-        this.chatView.addMessage('user').textContent =
-          `📎 file: ${[...files].map(f => f.name).join(', ')}`;
-
-        const botMsg = this.chatView.addMessage('bot');
-        const thinking = this.chatView.createThinkingIndicator();
-        botMsg.appendChild(thinking);
-
-        const formData = new FormData();
-        [...files].forEach(f => formData.append('files', f));
-
-        this.state.busy = true;
-
-        try {
-          const res = await fetch('http://localhost:3000/api/documents/ingest', {
-            method: 'POST',
-            body: formData
-          });
-
-          thinking.remove();
-
-          if (!res.ok) {
-            botMsg.textContent = '❌ Upload failed';
-            return;
-          }
-
-          const data = await res.json().catch(() => null);
-          botMsg.textContent = data?.message || '✅ Files uploaded successfully';
-
-        } catch (err) {
-          console.error(err);
-          thinking.remove();
-          botMsg.textContent = '❌ Error uploading files';
-        } finally {
-          this.state.busy = false;
-          this.input.value = '';
-        }
-      }
-    }
-    // =========================
-    // Audio Player (PCM 16bit 24kHz)
-    // =========================
-    export class PCMPlayer {
-        constructor() {
-            this.audioCtx = null;
-            this.nextStartTime = 0;
-        }
-
-        // Initialize AudioContext on first user gesture
-        initContext() {
-            if (!this.audioCtx) {
-                this.audioCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 24000 });
-            } else if (this.audioCtx.state === 'suspended') {
-                this.audioCtx.resume();
-            }
-        }
-
-        playChunk(arrayBuffer) {
-            this.initContext();
-            
-            const int16Array = new Int16Array(arrayBuffer);
-            const float32Array = new Float32Array(int16Array.length);
-            for (let i = 0; i < int16Array.length; i++) {
-                float32Array[i] = int16Array[i] / 32768.0;
-            }
-
-            const audioBuffer = this.audioCtx.createBuffer(1, float32Array.length, 24000);
-            audioBuffer.getChannelData(0).set(float32Array);
-
-            const source = this.audioCtx.createBufferSource();
-            source.buffer = audioBuffer;
-            source.connect(this.audioCtx.destination);
-
-            const currentTime = this.audioCtx.currentTime;
-            if (this.nextStartTime < currentTime) this.nextStartTime = currentTime;
-
-            source.start(this.nextStartTime);
-            this.nextStartTime += audioBuffer.duration;
-        }
-    }
-    // =========================
-    // Chat Service (WebSocket Refactor)
-    // =========================
-    export class ChatService {
-      constructor(chatView, stopBtn, state, smd) {
-        this.chatView = chatView;
-        this.stopBtn = stopBtn;
-        this.state = state;
-        this.smd = smd;
+    // 4. Main Chat Service
+    class ChatService {
+      constructor(ui, audio, smdLibrary) {
+        this.ui = ui;
+        this.audio = audio;
+        this.smd = smdLibrary;
+        this.convId = crypto.randomUUID();
+        this.isBusy = false;
         
-        // UI elements for current turn
-        this.activeBotMsg = null;
         this.activeParser = null;
+        this.activeMsgEl = null;
         this.activeThinking = null;
 
-        // 1. CAPTURE THE ID FIRST
-        this.conversationId = conversationId;
-
-        // 1. ENSURE PLAYER IS INITIALIZED IMMEDIATELY
-        this.player = new PCMPlayer();
-
-        // Bind the send method to ensure 'this' always refers to ChatService
-        this.send = this.send.bind(this);
-        
-        this.initWebSocket();
-        this.initTTSWebSocket(); // 1. Start TTS listener
-        this.stopBtn.addEventListener('click', () => this.stopGeneration());
+        this.initConnections();
       }
 
-      initWebSocket() {
-        // Connect to the backend
-        this.socket = new WebSocket('ws://localhost:3000');
-
-        this.socket.onopen = () => console.log('✅ WebSocket Connected');
-
-        this.socket.onmessage = (event) => {
-          this.handleIncomingMessage(event.data);
-        };
-
-        this.socket.onerror = (error) => {
-          console.error('WebSocket Error:', error);
-          if (this.activeBotMsg) this.activeBotMsg.textContent += '\n[Connection Error]';
-        };
-
-        this.socket.onclose = () => {
-          console.warn('WebSocket Closed. Reconnecting...');
-          setTimeout(() => this.initWebSocket(), 3000); // Simple auto-reconnect
-        };
-      }
-
-      initTTSWebSocket() {
-        // 2. Connect to our TTS Server on port 3001
-        this.ttsSocket = new WebSocket(`ws://localhost:3001?conversationId=${this.conversationId}`);
+      initConnections() {
+        this.socket = new WebSocket(CONFIG.CHAT_WS);
+        this.ttsSocket = new WebSocket(`${CONFIG.TTS_WS}?conversationId=${this.convId}`);
         this.ttsSocket.binaryType = 'arraybuffer';
 
-        this.ttsSocket.onmessage = (event) => {
-            // 3. Play the audio chunk immediately
-            this.player.playChunk(event.data);
-        };
-
-        this.ttsSocket.onclose = () => {
-            console.warn('TTS WebSocket Closed. Retrying...');
-            setTimeout(() => this.initTTSWebSocket(), 3000);
-        };
-    }
-
-      handleIncomingMessage(rawData) {
-        try {
-          // Your backend sends strings (via formatChunk)
-          // Check if it's the raw data: prefix or a JSON object
-          let line = rawData.trim();
-          if (line.startsWith('data: ')) line = line.replace('data: ', '');
-          if (line === '[DONE]') return;
-          const obj = JSON.parse(line);
-
-          // 1. Handle UI transitions (remove thinking dots on first chunk)
-          if (this.activeThinking) {
-            this.activeThinking.remove();
-            this.activeThinking = null;
-          }
-
-          switch (obj.type) {
-            case 'text':
-              if (this.activeParser) {
-                this.smd.parser_write(this.activeParser, obj.delta);
-              }
-              break;
-
-              case 'done':
-                  if (this.activeParser) {
-                    // RESTORED: This sends the stats string to the markdown renderer
-                    this.smd.parser_write(this.activeParser, obj.stats);
-                  }
-                  this.finishTurn();
-                  break;
-
-              case 'error':
-                  console.error('Server side error:', obj.delta);
-                  // Ensure the parser handles the error message before closing
-                  if (this.activeParser) {
-                    this.smd.parser_write(this.activeParser, `\n\n❌ [Error: ${obj.delta}]`);
-                  }
-                  this.finishTurn();
-                  break;
-
-              default:
-                console.warn('Unknown message type received:', obj.type);
-                break;
-          }
-          
-          this.chatView.scrollToBottom();
-
-        } catch (err) {
-          console.error('Error processing WS message:', err, rawData);
-        }
+        this.socket.onmessage = (e) => this.handleChatData(e.data);
+        this.ttsSocket.onmessage = (e) => this.audio.playChunk(e.data, this.audio.generation);
       }
 
-      stopGeneration() {
-        // Send a message to the backend to trigger the AbortSignal
-        if (this.socket.readyState === WebSocket.OPEN) {
-          this.socket.send(JSON.stringify({ action: 'api:stop' }));
-        }
-        this.finishTurn('[Canceled]');
+      async sendPrompt() {
+        const text = this.ui.prompt.value.trim();
+        if (!text || this.isBusy) return;
+
+        this.audio.stop();
+        this.isBusy = true;
+        this.ui.prompt.value = '';
+        this.ui.autoResizeInput();
+        this.ui.toggleStopBtn(true);
+
+        // UI Setup
+        this.ui.appendMessage('user', text);
+        this.activeMsgEl = this.ui.appendMessage('bot');
+        this.activeThinking = this.ui.showThinking(this.activeMsgEl);
+
+        // SMD Setup
+        const renderer = this.smd.default_renderer(this.activeMsgEl);
+        this.activeParser = this.smd.parser(renderer);
+
+        this.socket.send(JSON.stringify({
+          action: 'api:prompt',
+          payload: { prompt: text, conversationId: this.convId }
+        }));
+      }
+
+      handleChatData(rawData) {
+        try {
+          const cleanData = rawData.replace(/^data: /, '').trim();
+          if (cleanData === '[DONE]') return this.finishTurn();
+          
+          const obj = JSON.parse(cleanData);
+          if (this.activeThinking) { this.activeThinking.remove(); this.activeThinking = null; }
+
+          if (obj.type === 'text') {
+            this.smd.parser_write(this.activeParser, obj.delta);
+          } else if (obj.type === 'done' || obj.type === 'error') {
+            this.finishTurn(obj.type === 'error' ? `\n\n❌ ${obj.delta}` : '');
+          }
+          this.ui.scrollToBottom();
+        } catch (e) { console.error("Parse Error", e); }
+      }
+
+      stop() {
+        this.audio.stop();
+        if (this.socket.readyState === 1) this.socket.send(JSON.stringify({ action: 'api:stop' }));
+        if (this.ttsSocket.readyState === 1) this.ttsSocket.send(JSON.stringify({ action: 'stop' }));
+        this.finishTurn('[Stopped]');
       }
 
       finishTurn(suffix = '') {
-        if (this.activeParser) {
-          this.smd.parser_end(this.activeParser);
-          if (suffix) this.activeBotMsg.textContent += `\n\n${suffix}`;
-        }
+        if (this.activeParser) this.smd.parser_end(this.activeParser);
+        if (suffix) this.activeMsgEl.innerHTML += suffix;
+        
+        this.isBusy = false;
         this.activeParser = null;
-        this.activeBotMsg = null;
-        this.state.busy = false;
-        this.stopBtn.classList.add('invisible');
-      }
-
-      async send(prompt, conversationId) {
-        if (!prompt || this.state.busy) return;
-
-        // 4. Critical: Resume AudioContext on User Click
-        this.player.initContext();
-
-        if (this.socket.readyState !== WebSocket.OPEN) {
-          alert("Connection is not ready. Please wait.");
-          return;
-        }
-
-        // Prepare UI
-        input.clear();
-        this.chatView.addMessage('user').textContent = prompt;
-
-        this.activeBotMsg = this.chatView.addMessage('bot');
-        this.activeThinking = this.chatView.createThinkingIndicator();
-        this.activeBotMsg.appendChild(this.activeThinking);
-
-        // Prepare Markdown Parser
-        const renderer = this.smd.default_renderer(this.activeBotMsg);
-        this.activeParser = this.smd.parser(renderer);
-
-        this.state.busy = true;
-        this.stopBtn.classList.remove('invisible');
-
-        // Send the prompt over WebSocket
-        this.socket.send(JSON.stringify({
-          action: 'api:prompt',
-          payload: { prompt, conversationId }
-        }));
+        this.ui.toggleStopBtn(false);
       }
     }
 
-    // =========================
-    // App Bootstrap
-    // =========================
-    import * as smd from "https://cdn.jsdelivr.net/npm/streaming-markdown/smd.min.js";
+    // 5. App Bootstrap
+    const ui = new UIController();
+    const audio = new AudioEngine();
+    const chat = new ChatService(ui, audio, smd);
 
-    const state = { busy: false };
-    const conversationId = crypto.randomUUID();
+    // Event Listeners
+    ui.prompt.addEventListener('input', () => ui.autoResizeInput());
+    ui.prompt.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); chat.sendPrompt(); }
+    });
 
-    const chatView = new ChatView(document.getElementById('chat'));
-    const input = new InputController(
-      document.getElementById('prompt'),
-      () => chatService.send(input.getValue(), conversationId)
-    );
+    document.getElementById('stop-btn').addEventListener('click', () => chat.stop());
 
-    const uploader = new FileUploader(
-      document.getElementById('upload-btn'),
-      document.getElementById('file-input'),
-      chatView,
-      state
-    );
+    // File Upload logic (Simplified for readability)
+    const fileInput = document.getElementById('file-input');
+    document.getElementById('upload-btn').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', async () => {
+      const files = fileInput.files;
+      if (!files.length) return;
+      
+      ui.appendMessage('user', `📎 Uploading: ${files[0].name}...`);
+      const formData = new FormData();
+      [...files].forEach(f => formData.append('files', f));
 
-    const chatService = new ChatService(
-      chatView,
-      document.getElementById('stop-btn'),
-      state,
-      smd,
-      conversationId
-    );
-
-
-    const url = new URL(window.location.href);
-    url.searchParams.set('id', conversationId);
-    window.history.replaceState({}, '', url);
-
-    console.log(url.toString());
+      try {
+        const res = await fetch(CONFIG.INGEST_URL, { method: 'POST', body: formData });
+        ui.appendMessage('bot', res.ok ? "✅ Processing complete." : "❌ Upload failed.");
+      } catch (e) { ui.appendMessage('bot', "❌ Error connecting to server."); }
+    });
 
   </script>
-
 </body>
 </html>
